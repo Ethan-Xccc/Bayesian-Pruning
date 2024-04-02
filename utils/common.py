@@ -109,7 +109,7 @@ def graph_weight(weight,m,logger):
         raise('The weight dim must be 4!')
     device = torch.device(f"cuda:{args.gpus[0]}") if torch.cuda.is_available() else 'cpu'
     #Calculate the similarity matrix and normalize
-    s_matrix = F.normalize(torch.exp(-pairwise_distances(W)),1)
+    s_matrix = F.normalize(torch.exp(-pairwise_distances(W)), 1) ##revicehere
     #Sort
     sorted_value, indices = torch.sort(s_matrix,descending=True)
    

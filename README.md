@@ -11,7 +11,7 @@ python cifar.py
 --cfg vgg16 
 --data_path /data/cifar 
 --job_dir ./experiment/cifar/vgg_1 
---pretrain_model /home/pretrain/vgg16_cifar10.pt 
+--pretrain_model /home/xuchi/CLR-RNF/pretrain/vgg16_cifar10.pt 
 --lr 0.01 
 --lr_decay_step 50 100 
 --weight_decay 0.005  
