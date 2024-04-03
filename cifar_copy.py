@@ -72,7 +72,7 @@ def graph_vgg(pr_target):
     centroids_state_dict = {}
     prune_state_dict = []
     indices = []
-
+    theta_prior = []
     current_layer = 0
     index = 0
     #start_time = time.time()
@@ -119,7 +119,10 @@ def graph_vgg(pr_target):
             theta = similar_sum / np.sum(similar_sum) * conv_weight.size()[0]
             scaled_theta = 1 - pr_cfg[current_layer] * theta
             scaled_theta = np.maximum(scaled_theta, 0)
+            theta_prior.append(scaled_theta)
             print(scaled_theta)
+
+
 
             print(current_layer)
             if args.graph_method == 'knn':
@@ -146,35 +149,67 @@ def graph_vgg(pr_target):
             prune_state_dict.append(name + '.weight')
             prune_state_dict.append(name + '.bias')
 
+    ############################################################################################################
+            
+    theta_prior = {i:torch.tensor(theta_prior[i]) for i in range(len(theta_prior))}
+    bnn_model = import_module(f'model.bayesian_{args.arch}').Bayes_VGG(args.cfg, priors=theta_prior).to(device)
     #load weight
+
     model = import_module(f'model.{args.arch}').VGG(args.cfg, layer_cfg=cfg).to(device)
 
-    if args.init_method == 'random_project' or args.init_method == 'direct_project':
-        pretrain_state_dict = origin_model.state_dict()
-        state_dict = model.state_dict()
-        centroids_state_dict_keys = list(centroids_state_dict.keys())
+    ##load weight for bnn
+    pretrain_state_dict = origin_model.state_dict()
+    state_dict = model.state_dict()
+    
+    # 获取Bayesian VGG模型的当前状态字典
+    bnn_state_dict = bnn_model.state_dict()
+
+    pretrain_params = []
+    # 收集预训练模型中的卷积和BN层的权重和偏置
+    for name, module in origin_model.named_modules():
+        if isinstance(module, nn.Conv2d) or isinstance(module, nn.BatchNorm2d):
+            pretrain_params.append(module.weight.data)
+            if module.bias is not None:
+                pretrain_params.append(module.bias.data)
+
+    i = 0  # 参数索引
+    # 遍历 Bayesian VGG 模型并赋值权重和偏置
+    for name, module in bnn_model.named_modules():
+        if isinstance(module, nn.Conv2d) or isinstance(module, nn.BatchNorm2d):
+            module.weight.data = pretrain_params[i]
+            i += 1  # 更新索引
+            if module.bias is not None:
+                module.bias.data = pretrain_params[i]
+                i += 1  # 更新索引
+    bnn_model = bnn_model.float()
+    return bnn_model, cfg
+
+    # if args.init_method == 'random_project' or args.init_method == 'direct_project':
+    #     pretrain_state_dict = origin_model.state_dict()
+    #     state_dict = model.state_dict()
+    #     centroids_state_dict_keys = list(centroids_state_dict.keys())
 
 
-        for i, (k, v) in enumerate(centroids_state_dict.items()):
-            if i == 0: #first conv need not to prune channel
-                continue
-            if args.init_method == 'random_project':
-                centroids_state_dict[k] = random_project(torch.FloatTensor(centroids_state_dict[k]),
-                                                         len(indices[i - 1]))
-            else:
-                centroids_state_dict[k] = direct_project(torch.FloatTensor(centroids_state_dict[k]), indices[i - 1])
+    #     for i, (k, v) in enumerate(centroids_state_dict.items()):
+    #         if i == 0: #first conv need not to prune channel
+    #             continue
+    #         if args.init_method == 'random_project':
+    #             centroids_state_dict[k] = random_project(torch.FloatTensor(centroids_state_dict[k]),
+    #                                                      len(indices[i - 1]))
+    #         else:
+    #             centroids_state_dict[k] = direct_project(torch.FloatTensor(centroids_state_dict[k]), indices[i - 1])
 
-        for k, v in state_dict.items():
-            if k in prune_state_dict:
-                continue
-            elif k in centroids_state_dict_keys:
-                state_dict[k] = torch.FloatTensor(centroids_state_dict[k]).view_as(state_dict[k])
-            else:
-                state_dict[k] = pretrain_state_dict[k]
-        model.load_state_dict(state_dict)
-    else:
-        pass
-    return model, cfg
+    #     for k, v in state_dict.items():
+    #         if k in prune_state_dict:
+    #             continue
+    #         elif k in centroids_state_dict_keys:
+    #             state_dict[k] = torch.FloatTensor(centroids_state_dict[k]).view_as(state_dict[k])
+    #         else:
+    #             state_dict[k] = pretrain_state_dict[k]
+    #     model.load_state_dict(state_dict)
+    # else:
+    #     pass
+    #return model, cfg
 
 def graph_resnet(pr_target):
 

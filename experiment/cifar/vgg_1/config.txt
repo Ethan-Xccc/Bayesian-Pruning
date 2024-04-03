@@ -1,4 +1,4 @@
-2024-04-02-18:47:46
+2024-04-03-10:50:41
 
 gpus: [0]
 dataset: ImageNet
@@ -19,8 +19,8 @@ label_smooth: 0.1
 criterion: Softmax
 lr_decay_step: [50, 100]
 weight_decay: 0.005
-pretrain_model: /home/xuchi/CLR-RNF/pretrain/vgg16_cifar10.pt
-pr_target: 0.7
+pretrain_model: /data/pretrain/vgg16_cifar10.pt
+pr_target: 0.86
 init_method: direct_project
 graph_method: knn
 graph_gpu: True

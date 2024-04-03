@@ -12,19 +12,35 @@ cfg = {
 class GaussianScale(nn.Module):
     def __init__(self, theta):
         super(GaussianScale, self).__init__()
+        initial_mean = theta
+        initial_var = theta * (1 - theta)
+        self.initial_mean = initial_mean
+        self.initial_var = initial_var
+
         self.mean = nn.Parameter(theta)
-        self.var = nn.Parameter(theta*(1-theta))
+        self.log_var = nn.Parameter(torch.log(initial_var))
 
     def forward(self, x):
-        # 生成每个特征通道的高斯分布θ值
-        theta = torch.normal(self.mean, torch.sqrt(torch.exp(self.var))).to(x.device)
-        # θ值的形状是(num_features,)，需要调整为与x兼容的形状
-        theta = theta.view(1, -1, 1, 1)
+        std = torch.exp(0.5 * self.log_var)
+        eps = torch.randn_like(std).to(x.device)
+        theta = self.mean #+ std * eps
+        theta = theta.view(1,-1,1,1)
         return x * theta
+    def kl_divergence(self):
+         # 后验分布的参数
+        prior_mean = self.initial_mean
+        prior_var = self.initial_var
+        post_mean = self.mean
+        post_var = torch.exp(self.log_var)
 
-class VGG(nn.Module):
-    def __init__(self, vgg_name, priors=None, num_classes=10):
-        super(VGG, self).__init__()
+        # 计算KL散度
+        kl_div = torch.log(prior_var / post_var) + \
+                (post_var + (post_mean - prior_mean) ** 2) / (2 * prior_var) - 0.5
+        return kl_div.sum()
+    
+class Bayes_VGG(nn.Module):
+    def __init__(self, vgg_name, layer_cfg=None, priors=None,  num_classes=10):
+        super(Bayes_VGG, self).__init__()
         if priors is None:
             priors = {}
         self.features = self._make_layers(cfg[vgg_name], priors)
@@ -37,11 +53,11 @@ class VGG(nn.Module):
         out = self.classifier(out)
         return out
 
-    def _make_layers(self, cfg, priors):
+    def _make_layers(self, layer_cfg, priors):
         layers = []
         in_channels = 3
         conv_index = 0  # Track the index of convolutional layers
-        for v in cfg:
+        for v in layer_cfg:
             if v == 'M':
                 layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
             else:
@@ -50,8 +66,29 @@ class VGG(nn.Module):
                 conv_layer = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
                 layers += [conv_layer,
                            nn.BatchNorm2d(v),
-                           GaussianScale(v, initial_prob=prior),
+                           GaussianScale(theta=prior),
                            nn.ReLU(inplace=True)]
                 in_channels = v
                 conv_index += 1  # Update the convolutional layer index only for conv layers
         return nn.Sequential(*layers)
+        
+    def kl_divergence_loss(self):
+        kl = 0
+        for layer in self.features:
+            if isinstance(layer, GaussianScale):
+                kl += layer.kl_divergence()
+        return kl 
+    
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                nn.init.constant_(m.bias, 0)
+    
