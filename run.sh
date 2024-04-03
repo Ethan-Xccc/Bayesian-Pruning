@@ -3,7 +3,7 @@ python cifar_copy.py \
 --arch vgg_cifar \
 --cfg vgg16 \
 --data_path /data/cifar \
---job_dir ./experiment/cifar/vgg_1 \
+--job_dir /home/xuchi/projects/experiment/cifar/vgg_1 \
 --pretrain_model /data/pretrain/vgg16_cifar10.pt \
 --lr 0.01 \
 --lr_decay_step 50 100 \

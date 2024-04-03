@@ -23,7 +23,8 @@ class GaussianScale(nn.Module):
     def forward(self, x):
         std = torch.exp(0.5 * self.log_var)
         eps = torch.randn_like(std).to(x.device)
-        theta = self.mean #+ std * eps
+        theta = self.mean + 0.01 * eps
+        theta = torch.clamp(theta, 0, 1)
         theta = theta.view(1,-1,1,1)
         return x * theta
     def kl_divergence(self):
